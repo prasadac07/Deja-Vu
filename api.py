@@ -151,10 +151,23 @@ def execute_query():
         return jsonify({'error': 'Missing query, db_type, or db_params parameters'}), 400
 
     print(query, db_type, db_params)
-    results = read_database_query(query, db_type, db_params)
-   
+    results= read_database_query(query, db_type, db_params)
+  
+
+    # Generate natural language response and summary using Gemini
+    num_results = len(results)
+    print(num_results)
+    if num_results == 0:
+        response = "No results found."
+        summary = "No results found for the query."
+    elif num_results == 1:
+        response = f"Found one record: {results[0]}."
+        summary = get_gemini_response(str(results[0]), ["Summarize the following database record:"])
+    else:
+        response = f"Found {num_results} records. The first few are: {results[:5]}."
+        summary = get_gemini_response(str(results[:5]), ["Summarize the following database records:"])
     
-    return jsonify({'results': results})
+    return jsonify({'results': results, 'natural_language_response': response, 'summary': summary})
 
 if __name__ == '__main__':
     app.run(debug=True)
