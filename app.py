@@ -23,7 +23,7 @@ def read_sqlite_query(sql, db):
     if not os.path.exists(db):
         st.error(f"Database file does not exist: {db}")
         return []
-    
+    print(sql, db)
     try:
           # Print the connection string for debugging
         print(f"Connecting to SQLite database: {db}")  # Debugging line
