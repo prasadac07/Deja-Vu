@@ -9,7 +9,6 @@ from pymongo import MongoClient  # For MongoDB
 import google.generativeai as genai
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-# Configure Genai Key
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 app = Flask(__name__)
