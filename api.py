@@ -13,21 +13,15 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 app = Flask(__name__)
 CORS(app)
+
 # Function to load Google Gemini Model and provide queries as response
 def get_gemini_response(question, prompt):
     model = genai.GenerativeModel('gemini-pro')
     response = model.generate_content([prompt[0], question])
     return response.text
 
-# def get_gemini_response_sqllite(question, prompt, context):
-#     model = genai.GenerativeModel('gemini-pro')
-#     question = question + context
-#     response = model.generate_content([prompt[0], question])
-#     return response.text
-
 def get_gemini_response_sqllite(question, prompt, context):
     try:
-
         # Ensure API key is set
         if not os.getenv("GOOGLE_API_KEY"):
             print("Error: GOOGLE_API_KEY is not set.")
@@ -57,13 +51,39 @@ def get_gemini_response_sqllite(question, prompt, context):
         print(f"Error while calling Gemini API: {e}")
         return None
 
+def get_gemini_response_mysql(question, prompt, context):
+    try:
+        # Ensure API key is set
+        if not os.getenv("GOOGLE_API_KEY"):
+            print("Error: GOOGLE_API_KEY is not set.")
+            return None
 
+        model = genai.GenerativeModel('gemini-pro')
 
+        # Combine question with context
+        question_with_context = f"{question} {context}"
 
+        # Log the final question and context
+        print(f"Question passed to Gemini: {question_with_context}")
+
+        # Make the API call
+        response = model.generate_content([prompt[0], question_with_context])
+
+        # Log and check the response
+        print(f"Gemini API response: {response}")
+
+        if response and hasattr(response, 'text'):
+            return response.text
+        else:
+            print("Error: Gemini API did not return valid text.")
+            return None
+
+    except Exception as e:
+        print(f"Error while calling Gemini API: {e}")
+        return None
 
 # Function to connect and query SQLite
 def read_sqlite_query(sql, db):
-   
     print(sql, db)
     try:
         conn = sqlite3.connect(db)
@@ -143,7 +163,6 @@ def read_database_query(sql, db_type, db_params):
 # Function to convert SQL to MongoDB query
 def sql_to_mongo_query(sql):
     query = {}
-    
     if "WHERE" in sql:
         where_clause = sql.split("WHERE")[1].strip()
         conditions = where_clause.split("AND")
@@ -152,7 +171,6 @@ def sql_to_mongo_query(sql):
             key = key.strip()
             value = value.strip().strip('"')  # Remove quotes from around the value
             query[key] = value
-    
     return query
 
 # Define your prompt
@@ -171,32 +189,13 @@ prompt = [
 
 # API endpoint to generate SQL query
 @app.route('/generate_query', methods=['POST'])
-# def generate_query():
-#     data = request.get_json()
-#     question = data.get('questionInput')
-#     type = data.get('dbType')
-#     response = None
-
-#     print(data)
-#     if not question:
-#         return jsonify({'error': 'Missing question parameter'}), 400
-    
-#     if type == 'sqllite':
-#         response = get_gemini_response_sqllite(question, prompt, chatbot_context)
-    
-#     # print(response)
-#     return jsonify({'query': response})
-
-@app.route('/generate_query', methods=['POST'])
 def generate_query():
-    parse_db_file("./sqllite_1.db")
-    print(chatbot_context)
     data = request.get_json()
     print("Here is the dataType: ",(data))
     question = data.get('questionInput')
     db_type = data.get('dbType')  # Correct the spelling here if needed
+    db_params = data.get('dbParams') # Get MySQL connection parameters
     
-
     if not question:
         return jsonify({'error': 'Missing question parameter'}), 400
     
@@ -205,9 +204,14 @@ def generate_query():
 
     # Check if the db_type is 'sqlite'
     if db_type == 'sqlite':
+        parse_db_file("./sqllite_1.db")
         context = chatbot_context.get('db_data', "")  # Get context or default to empty
         response = get_gemini_response_sqllite(question, prompt, context)
         print('Hello')
+    # Check if the db_type is 'mysql'
+    elif db_type == 'mysql':
+        context = parse_mysql_db(db_params)  # Get context from MySQL
+        response = get_gemini_response_mysql(question, prompt, context)
 
     print(f"Generated SQL query: {response}")  # Log the generated query for debugging
 
@@ -215,7 +219,6 @@ def generate_query():
         return jsonify({'error': 'Failed to generate query response'}), 500
 
     return jsonify({'query': response})
-
 
 chatbot_context = {}
 
@@ -270,41 +273,51 @@ def parse_db_file(db_file_path):
     except sqlite3.Error as e:
         print(f"Error parsing .db file: {e}")
 
-parse_db_file("./sqllite_1.db")
 
+# Function to parse MySQL database and build context
+def parse_mysql_db(db_params):
+    try:
+        conn = mysql.connector.connect(**db_params)
+        cursor = conn.cursor()
 
-# # API endpoint to execute query and return results
-# @app.route('/execute_query', methods=['POST'])
-# @app.route('/execute_query', methods=['POST'])
-# def execute_query():
-#     data = request.get_json()
-#     query = data.get('query')
-#     db_type = data.get('dbType')
-#     db_params = data.get('dbParams')
-    
-#     if not query or not db_type or not db_params:
-#         return jsonify({'error': 'Missing query, db_type, or db_params parameters'}), 400
+        # Fetch the list of all tables in the database
+        cursor.execute("SHOW TABLES;")
+        tables = [table[0] for table in cursor.fetchall()]
 
-#     print(query, db_type, db_params)
-    
-#     # Execute the query on the database
-#     parse_db_file("E:\Pulzion Hackathon\sqllite_1.db")
-#     results = read_database_query(query, db_type, db_params)
+        # Initialize the context data structure
+        db_data = {}
 
-#     num_results = len(results)
-#     print(num_results)
-    
-#     if num_results == 0:
-#         response = "No results found."
-#         summary = "No results found for the query."
-#     elif num_results == 1:
-#         response = f"Found one record: {results[0]}."
-#         summary = get_gemini_response(str(results[0]), ["Summarize the following database record:"])
-#     else:
-#         response = f"Found {num_results} records. The first few are: {results[:5]}."
-#         summary = get_gemini_response(str(results[:5]), ["Summarize the following database records:"])
+        for table_name in tables:
+            # Fetch all rows from the table
+            cursor.execute(f"SELECT * FROM {table_name};")
+            rows = cursor.fetchall()
 
-#     return jsonify({'results': results, 'natural_language_response': response, 'summary': summary})
+            # Fetch the column names
+            cursor.execute(f"DESCRIBE {table_name};")
+            columns = [col[0] for col in cursor.fetchall()]
+
+            # Store the table's data in the context
+            db_data[table_name] = {
+                'columns': columns,
+                'rows': rows
+            }
+
+        # Build the context string
+        context_string = "The available tables and their columns are: \n"
+        for table_name, table_data in db_data.items():
+            context_string += f"Table: {table_name}\n"
+            context_string += f"Columns: {', '.join(table_data['columns'])}\n"
+            # You can optionally include some sample rows here if needed
+
+        return context_string
+
+    except mysql.connector.Error as e:
+        print(f"Error parsing MySQL database: {e}")
+        return ""  # Return an empty string if parsing fails
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
 
 @app.route('/execute_query', methods=['POST'])
 def execute_query():
@@ -334,9 +347,6 @@ def execute_query():
 
     # Execute the query on the database
     results = read_database_query(query, db_type, db_params)
-    
-    # if error:
-    #     return jsonify({'error': error}), 500
 
     num_results = len(results)
     print(f"Number of results: {num_results}")
@@ -345,14 +355,63 @@ def execute_query():
         response = "No results found."
         summary = "No results found for the query."
     elif num_results == 1:
-        response = f"Found one record: {results[0]}."
-        summary = get_gemini_response(str(results[0]), ["Summarize the following database record:"])
+        response = f"Found one record: {results[0]}"
+        summary = f"Found one record."
     else:
-        response = f"Found {num_results} records. The first few are: {results[:5]}."
-        summary = get_gemini_response(str(results[:5]), ["Summarize the following database records:"])
+        response = f"Found {num_results} records."
+        summary = f"Found {num_results} records."
 
-    return jsonify({'results': results, 'natural_language_response': response, 'summary': summary})
 
+# Generate explanation using Gemini
+    explanation = generate_explanation(data.get('questionInput'), query, results)
+
+    # Prepare the JSON response
+    return jsonify({
+        'results': results,
+        'summary': summary,
+        'natural_language_response': explanation  # Include the explanation in the response
+    })
+
+
+def generate_explanation(user_input, query, results):
+    """Generates an explanation of the query and results using Gemini."""
+    try:
+        # Ensure API key is set
+        if not os.getenv("GOOGLE_API_KEY"):
+            print("Error: GOOGLE_API_KEY is not set.")
+            return "Explanation could not be generated."
+
+        model = genai.GenerativeModel('gemini-pro')
+
+        # Create prompt for Gemini
+        prompt = f"""
+        You are an AI assistant that explains SQL queries and their results.
+
+        Here's the user's original question:
+        {user_input}
+
+        Here's the SQL query that was generated:
+        {query}
+
+        And here are the results of the query:
+        {results}
+
+        Please provide a clear and concise explanation of what the query does and what the results mean. 
+        Explain it in a way that someone who doesn't know SQL can understand.
+        """
+
+        # Make the API call
+        response = model.generate_content([prompt])
+
+        if response and hasattr(response, 'text'):
+            return response.text
+        else:
+            print("Error: Gemini API did not return valid text.")
+            return "Explanation could not be generated."
+
+    except Exception as e:
+        print(f"Error while calling Gemini API: {e}")
+        return "Explanation could not be generated."
 
 
 if __name__ == '__main__':
