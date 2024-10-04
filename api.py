@@ -21,6 +21,13 @@ def get_gemini_response(question, prompt):
     return response.text
 
 def get_gemini_response_sqllite(question, prompt, context):
+    promptt = [
+    """
+    You are an expert in converting English questions to SQL query!
+    Return only the sql query without anything else. Return only one query without any quotations
+    Here is the user question:
+    """
+]
     try:
         # Ensure API key is set
         if not os.getenv("GOOGLE_API_KEY"):
@@ -30,16 +37,16 @@ def get_gemini_response_sqllite(question, prompt, context):
         model = genai.GenerativeModel('gemini-pro')
 
         # Combine question with context
-        question_with_context = f"{question} {context}"
+        question_with_context = f"{promptt} {question} here is the current database: {context}"
 
         # Log the final question and context
         print(f"Question passed to Gemini: {question_with_context}")
 
         # Make the API call
-        response = model.generate_content([prompt[0], question_with_context])
+        response = model.generate_content([promptt[0], question_with_context])
 
         # Log and check the response
-        print(f"Gemini API response: {response}")
+        # print(f"Gemini API response: {response}")
 
         if response and hasattr(response, 'text'):
             return response.text
@@ -52,6 +59,7 @@ def get_gemini_response_sqllite(question, prompt, context):
         return None
 
 def get_gemini_response_mysql(question, prompt, context):
+
     try:
         # Ensure API key is set
         if not os.getenv("GOOGLE_API_KEY"):
@@ -177,13 +185,8 @@ def sql_to_mongo_query(sql):
 prompt = [
     """
     You are an expert in converting English questions to SQL query!
-    The SQL database has the name STUDENT and has the following columns - NAME, CLASS, 
-    SECTION \n\nFor example,\nExample 1 - How many entries of records are present?, 
-    the SQL command will be something like this SELECT COUNT(*) FROM STUDENT ;
-    \nExample 2 - Tell me all the students studying in Data Science class?, 
-    the SQL command will be something like this SELECT * FROM STUDENT 
-    where CLASS="Data Science"; 
-    also the sql code should not have ``` in beginning or end and sql word in output
+    Return only the sql query without anything else. Return only one query without any quotations
+    Here is the user question:
     """
 ]
 
