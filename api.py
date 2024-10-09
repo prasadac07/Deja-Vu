@@ -10,88 +10,42 @@ import google.generativeai as genai
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-
+import requests
+import json 
 app = Flask(__name__)
 CORS(app)
 
-# Function to load Google Gemini Model and provide queries as response
-def get_gemini_response(question, prompt):
-    model = genai.GenerativeModel('gemini-pro')
-    response = model.generate_content([prompt[0], question])
-    return response.text
+def get_worqhat_response_nano(question, prompt, context, model):
+    url = "https://api.worqhat.com/api/ai/content/v4"
+    payload = json.dumps({
+    "question": prompt[0] + "Here is the user question: "+ question +"Here is the db context: "+ context ,
+    "model": f"aicon-v4-{model}-160824",
+    "randomness": 0.1,
+    "stream_data": False,
+    "training_data": "You are an expert SQL bot",
+    "response_type": "text"
+    })
+    headers = {
+    'User-Agent': 'Apidog/1.0.0 (https://apidog.com)',
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer sk-92426c0957c64a869f5cf988d27b90ad'
+    }
 
-def get_gemini_response_sqllite(question, prompt, context):
-    promptt = [
-    """
-    You are an expert in converting English questions to SQL query!
-    Return only the sql query without anything else. Return only one query without any quotations
-    Here is the user question:
-    """
-]
-    try:
-        # Ensure API key is set
-        if not os.getenv("GOOGLE_API_KEY"):
-            print("Error: GOOGLE_API_KEY is not set.")
-            return None
+    response = requests.request("POST", url, headers=headers, data=payload)
 
-        model = genai.GenerativeModel('gemini-pro')
+    # print(response.text)
+    resp = json.loads(response.text)
+    # print("JSON STRUCC: ",resp["content"])
+    return resp["content"]
 
-        # Combine question with context
-        question_with_context = f"{promptt} {question} here is the current database: {context}"
 
-        # Log the final question and context
-        print(f"Question passed to Gemini: {question_with_context}")
-
-        # Make the API call
-        response = model.generate_content([promptt[0], question_with_context])
-
-        # Log and check the response
-        # print(f"Gemini API response: {response}")
-
-        if response and hasattr(response, 'text'):
-            return response.text
-        else:
-            print("Error: Gemini API did not return valid text.")
-            return None
-
-    except Exception as e:
-        print(f"Error while calling Gemini API: {e}")
-        return None
-
-def get_gemini_response_mysql(question, prompt, context):
-
-    try:
-        # Ensure API key is set
-        if not os.getenv("GOOGLE_API_KEY"):
-            print("Error: GOOGLE_API_KEY is not set.")
-            return None
-
-        model = genai.GenerativeModel('gemini-pro')
-
-        # Combine question with context
-        question_with_context = f"{question} {context}"
-
-        # Log the final question and context
-        print(f"Question passed to Gemini: {question_with_context}")
-
-        # Make the API call
-        response = model.generate_content([prompt[0], question_with_context])
-
-        # Log and check the response
-        print(f"Gemini API response: {response}")
-
-        if response and hasattr(response, 'text'):
-            return response.text
-        else:
-            print("Error: Gemini API did not return valid text.")
-            return None
-
-    except Exception as e:
-        print(f"Error while calling Gemini API: {e}")
-        return None
-
+correctionPrompt = ["""
+You are an expert in converting English questions to SQL query! You have to correct the following query. 
+I am also giving you the error caused by it. Return only the sql query without anything else.
+ Return only one query without any quotations
+"""]
 # Function to connect and query SQLite
-def read_sqlite_query(sql, db):
+def read_sqlite_query(sql, db, attempts=2):  # Added attempts parameter
     print(sql, db)
     try:
         conn = sqlite3.connect(db)
@@ -99,40 +53,42 @@ def read_sqlite_query(sql, db):
         cur.execute(sql)
         rows = cur.fetchall()
         conn.commit()
-        return rows
+        return rows, sql
     except sqlite3.Error as e:
         print(e)
-        return [], f"SQLite error: {e}"
+        if attempts > 0:
+            print("Attempting to correct the query...")
+            question = "I am getting an error while executing the following query: " + sql + "The error is: " + str(e)
+            newQuery = get_worqhat_response_nano(question, correctionPrompt, db, "large")
+            # print(newQuery)
+            return read_sqlite_query(newQuery, db, attempts - 1)  # Recursive call
+        else:
+            return [], f"SQLite error: {e}"
     finally:
         conn.close()  # Ensure connection is closed
 
-# Function to connect and query PostgreSQL
-def read_postgresql_query(sql, db_params):
-    try:
-        conn = psycopg2.connect(**db_params)
-        cur = conn.cursor()
-        cur.execute(sql)
-        rows = cur.fetchall()
-        conn.commit()
-        return rows, None
-    except psycopg2.Error as e:
-        return [], f"PostgreSQL error: {e}"
-    finally:
-        if conn:
-            cur.close()
-            conn.close()
+
 
 # Function to connect and query MySQL
-def read_mysql_query(sql, db_params):
+def read_mysql_query(sql, db_params, attempts=2):
     try:
         conn = mysql.connector.connect(**db_params)
         cur = conn.cursor()
         cur.execute(sql)
         rows = cur.fetchall()
         conn.commit()
-        return rows, None
+        return rows, sql
     except mysql.connector.Error as e:
-        return [], f"MySQL error: {e}"
+        print(e)
+        if attempts > 0:
+            print("Attempting to correct the query...")
+            question = "I am getting an error while executing the following query: " + sql + "The error is: " + str(e)
+            newQuery = get_worqhat_response_nano(question, correctionPrompt, db_params, "large")
+            # print(newQuery)
+            return read_mysql_query(newQuery, db_params, attempts - 1)  # Recursive call
+        else:
+            return [], f"SQLite error: {e}"
+        
     finally:
         if conn:
             cur.close()
@@ -155,16 +111,12 @@ def read_mongodb_query(collection_name, query, db_params):
 # Function to choose database and query
 def read_database_query(sql, db_type, db_params):
     if db_type == 'sqlite':
-        print("HERE",sql, db_params['db'])
+        # print("HERE",sql, db_params['db'])
         return read_sqlite_query(sql, db_params['db'])
-    elif db_type == 'postgresql':
-        return read_postgresql_query(sql, db_params)
+
     elif db_type == 'mysql':
         return read_mysql_query(sql, db_params)
-    elif db_type == 'mongodb':
-        collection_name = db_params.get('collection')
-        mongo_query = sql_to_mongo_query(sql)  # Convert SQL to MongoDB query
-        return read_mongodb_query(collection_name, mongo_query, db_params)
+  
     else:
         return [], "Invalid database type"
 
@@ -186,7 +138,8 @@ prompt = [
     """
     You are an expert in converting English questions to SQL query!
     Return only the sql query without anything else. Return only one query without any quotations
-    Here is the user question:
+    Example output: SELECT * from employees.
+    Example wrong output: ```sql: SELECT * from books```
     """
 ]
 
@@ -194,7 +147,7 @@ prompt = [
 @app.route('/generate_query', methods=['POST'])
 def generate_query():
     data = request.get_json()
-    print("Here is the dataType: ",(data))
+    # print("Here is the dataType: ",(data))
     question = data.get('questionInput')
     db_type = data.get('dbType')  # Correct the spelling here if needed
     db_params = data.get('dbParams') # Get MySQL connection parameters
@@ -208,15 +161,15 @@ def generate_query():
     # Check if the db_type is 'sqlite'
     if db_type == 'sqlite':
         parse_db_file("./sqllite_1.db")
-        context = chatbot_context.get('db_data', "")  # Get context or default to empty
-        response = get_gemini_response_sqllite(question, prompt, context)
-        print('Hello')
+        context = get_database_summary(chatbot_context.get('db_data', ""))  # Get context or default to empty
+        # print("THIS IS CONTEXT: ",context)
+        response = get_worqhat_response_nano(question, prompt, context, "large")
     # Check if the db_type is 'mysql'
     elif db_type == 'mysql':
-        context = parse_mysql_db(db_params)  # Get context from MySQL
-        response = get_gemini_response_mysql(question, prompt, context)
+        context = get_database_summary(parse_mysql_db(db_params))  # Get context from MySQL
+        response = get_worqhat_response_nano(question, prompt, context, "large")
 
-    print(f"Generated SQL query: {response}")  # Log the generated query for debugging
+    # print(f"Generated SQL query: {response}") 
 
     if response is None:
         return jsonify({'error': 'Failed to generate query response'}), 500
@@ -271,7 +224,7 @@ def parse_db_file(db_file_path):
         chatbot_context['db_data'] = db_data
         chatbot_context['summary'] = f"Parsed {len(tables)} tables from the database."
         
-        print("Database parsed successfully and context updated.")
+        # print("Database parsed successfully and context updated.")
 
     except sqlite3.Error as e:
         print(f"Error parsing .db file: {e}")
@@ -305,22 +258,45 @@ def parse_mysql_db(db_params):
                 'rows': rows
             }
 
-        # Build the context string
-        context_string = "The available tables and their columns are: \n"
-        for table_name, table_data in db_data.items():
-            context_string += f"Table: {table_name}\n"
-            context_string += f"Columns: {', '.join(table_data['columns'])}\n"
-            # You can optionally include some sample rows here if needed
-
-        return context_string
+        return db_data
 
     except mysql.connector.Error as e:
         print(f"Error parsing MySQL database: {e}")
-        return ""  # Return an empty string if parsing fails
+        return {}  # Return an empty dictionary if parsing fails
     finally:
         if conn:
             cursor.close()
             conn.close()
+
+def get_database_summary(db_data):
+    """
+    Generates a summary of the database schema using WorqHat LLM.
+
+    Args:
+        db_data (dict): A dictionary containing the database schema.
+
+    Returns:
+        str: A summary of the database schema.
+    """
+
+    # Construct the prompt for the WorqHat LLM
+    prompt = f"""
+    You are an AI assistant that can summarize database schemas.
+
+    Here's the database schema:
+    {db_data}
+
+    Please provide a concise summary of the database schema, including:
+    - The number of tables.
+    - The names of the tables and their columns.
+    - Don't include any sample data or rows.
+    """
+
+    # Call the get_worqhat_response function to generate the summary
+    summary = get_worqhat_response_nano("", [prompt], "", "nano")
+
+    return summary
+
 
 @app.route('/execute_query', methods=['POST'])
 def execute_query():
@@ -329,11 +305,11 @@ def execute_query():
     # Extract query, dbType, and dbParams from the request body
     query = data.get('query')
     db_type = data.get('dbType')
-    print(db_type)
+    # print(db_type)
     db_params = data.get('dbParams')
     
     # Log the received data for debugging
-    print(f"Received data: {data}")
+    # print(f"Received data: {data}")
     
     # Check if all required parameters are present
     if not query:
@@ -344,15 +320,15 @@ def execute_query():
         return jsonify({'error': 'Missing dbParams parameter'}), 400
 
     # Log query, db_type, and db_params for debugging
-    print(f"Query: {query}")
-    print(f"Database Type: {db_type}")
-    print(f"Database Params: {db_params}")
+    # print(f"Query: {query}")
+    # print(f"Database Type: {db_type}")
+    # print(f"Database Params: {db_params}")
 
     # Execute the query on the database
-    results = read_database_query(query, db_type, db_params)
-
+    results, sql = read_database_query(query, db_type, db_params)
+    print(sql)
     num_results = len(results)
-    print(f"Number of results: {num_results}")
+    # print(f"Number of results: {num_results}")
 
     if num_results == 0:
         response = "No results found."
@@ -372,6 +348,7 @@ def execute_query():
     return jsonify({
         'results': results,
         'summary': summary,
+        'sql_query': sql,
         'natural_language_response': explanation  # Include the explanation in the response
     })
 
@@ -399,8 +376,9 @@ def generate_explanation(user_input, query, results):
         And here are the results of the query:
         {results}
 
-        Please provide a clear and concise explanation of what the query does and what the results mean. 
+        Please provide a clear and concise explanation of what the query does. 
         Explain it in a way that someone who doesn't know SQL can understand.
+        Dont include *s in response.
         """
 
         # Make the API call

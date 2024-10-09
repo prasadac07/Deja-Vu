@@ -1,17 +1,17 @@
 import sqlite3
 
 # Connect to your SQLite database
-conn = sqlite3.connect('sqllite_1.db')
+conn = sqlite3.connect('./sqllite_1.db')
 
 # Create a cursor object
 cur = conn.cursor()
 
-# Drop the existing STUDENT table if it exists
-cur.execute("DROP TABLE IF EXISTS STUDENT;")
+# Drop the existing STUDENTS table if it exists
+cur.execute("DROP TABLE IF EXISTS STUDENTS;")
 
-# SQL command to create the STUDENT table with an additional MARKS column
-create_table_student = """
-CREATE TABLE STUDENT (
+# SQL command to create the STUDENTS table with an additional MARKS column
+create_table_STUDENTS = """
+CREATE TABLE STUDENTS (
     NAME TEXT,
     CLASS TEXT,
     SECTION TEXT,
@@ -19,11 +19,11 @@ CREATE TABLE STUDENT (
 );
 """
 
-# Execute the query to create the STUDENT table
-cur.execute(create_table_student)
+# Execute the query to create the STUDENTS table
+cur.execute(create_table_STUDENTS)
 
-# Insert some example data into the STUDENT table
-students_data = [
+# Insert some example data into the STUDENTS table
+STUDENTS_data = [
     ('Alice', 'Data Science', 'A', 85),
     ('Bob', 'AI', 'B', 90),
     ('Charlie', 'Cyber Security', 'C', 78),
@@ -39,15 +39,15 @@ students_data = [
     ('Mia', 'Data Science', 'A', 93)
 ]
 
-# Insert the new data into the STUDENT table
-cur.executemany("INSERT INTO STUDENT (NAME, CLASS, SECTION, MARKS) VALUES (?, ?, ?, ?)", students_data)
+# Insert the new data into the STUDENTS table
+cur.executemany("INSERT INTO STUDENTS (NAME, CLASS, SECTION, MARKS) VALUES (?, ?, ?, ?)", STUDENTS_data)
 
-# Drop the existing WORKER table if it exists
-cur.execute("DROP TABLE IF EXISTS WORKER;")
+# Drop the existing WORKERS table if it exists
+cur.execute("DROP TABLE IF EXISTS WORKERS;")
 
-# SQL command to create the WORKER table with additional columns for job role and salary
-create_table_worker = """
-CREATE TABLE WORKER (
+# SQL command to create the WORKERS table with additional columns for job role and salary
+create_table_WORKERS = """
+CREATE TABLE WORKERS (
     NAME TEXT,
     DEPARTMENT TEXT,
     ROLE TEXT,
@@ -55,11 +55,11 @@ CREATE TABLE WORKER (
 );
 """
 
-# Execute the query to create the WORKER table
-cur.execute(create_table_worker)
+# Execute the query to create the WORKERS table
+cur.execute(create_table_WORKERS)
 
-# Insert some example data into the WORKER table
-workers_data = [
+# Insert some example data into the WORKERS table
+WORKERS_data = [
     ('John', 'HR', 'Manager', 75000),
     ('Sarah', 'Finance', 'Analyst', 68000),
     ('Tom', 'IT', 'Developer', 82000),
@@ -72,11 +72,11 @@ workers_data = [
     ('Ava', 'Marketing', 'Content Specialist', 69000)
 ]
 
-# Insert the new data into the WORKER table
-cur.executemany("INSERT INTO WORKER (NAME, DEPARTMENT, ROLE, SALARY) VALUES (?, ?, ?, ?)", workers_data)
+# Insert the new data into the WORKERS table
+cur.executemany("INSERT INTO WORKERS (NAME, DEPARTMENT, ROLE, SALARY) VALUES (?, ?, ?, ?)", WORKERS_data)
 
 # Commit changes and close the connection
 conn.commit()
 conn.close()
 
-print("STUDENT and WORKER tables created and sample data inserted successfully.")
+print("STUDENTS and WORKERS tables created and sample data inserted successfully.")
