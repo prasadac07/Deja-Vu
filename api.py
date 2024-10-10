@@ -15,7 +15,11 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-def get_worqhat_response_nano(question, prompt, context, model):
+def get_worqhat_response_nano(question=" ", prompt=" ", context=" ", model="nano"):
+    prompt_text = prompt[0] if prompt[0] is not None else ""
+    question = question if question is not None else ""
+    context = context if context is not None else ""
+
     url = "https://api.worqhat.com/api/ai/content/v4"
     payload = json.dumps({
     "question": prompt[0] + "Here is the user question: "+ question +"Here is the db context: "+ context ,
@@ -340,9 +344,17 @@ def execute_query():
         response = f"Found {num_results} records."
         summary = f"Found {num_results} records."
 
+    prompt = [
+        """You are an AI assistant that explains SQL queries and their results.
 
+        Please provide a clear and concise explanation of what the query does. 
+        Explain it in a way that someone who doesn't know SQL can understand.
+        Dont include *s in response."""
+    ]
 # Generate explanation using Gemini
-    explanation = generate_explanation(data.get('questionInput'), query, results)
+    print(data.get('questionInput'))
+    # s = ', '.join([str(item) for item in results])
+    explanation = generate_explanation(data.get('questionInput'), prompt , results)
 
     # Prepare the JSON response
     return jsonify({
