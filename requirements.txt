@@ -3,4 +3,5 @@ python-dotenv
 psycopg2-binary
 mysql-connector-python
 pymongo
-google-generativeai
+flask
+flask-cors
